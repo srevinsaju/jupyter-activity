@@ -2,7 +2,7 @@
 name = JupyterLabs
 activity_version = 6
 bundle_id = io.srevinsaju.JupyterLabs
-exec = sugar-activity3 activity.JupyteActivity
+exec = sugar-activity3 activity.JupyterActivity
 icon = activity-jupyter
 license = MIT
 repository = https://github.com/srevinsaju/jupyter-activity

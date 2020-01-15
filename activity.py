@@ -18,11 +18,17 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-
-
+import os
+import sys
+import shlex
 import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk
+
+try:
+    from gi.repository import WebKit2 as WebKit
+except ModuleNotFoundError:
+    from gi.repository import WebKit
 
 from gettext import gettext as _
 
@@ -34,14 +40,83 @@ from sugar3.activity.widgets import StopButton
 from sugar3.activity.widgets import ShareButton
 from sugar3.activity.widgets import DescriptionItem
 
+from subprocess import Popen, PIPE
+
+class Jupyter:
+    def __init__(self, ip='localhost', port='4444'):
+        self.path = self.get_jupyter_path()
+        self.set_ip(ip)
+        self.set_port(port)
+        self.serve()
+        self.url = None
+        
+        pass
+    
+    def get_url(self):
+        return self.uri
+    
+    def get_jupyter_path(self):
+        
+        for i in [os.path.expanduser('~/.local/bin/jupyter'), os.path.expanduser('~/bin/jupyter'), 
+                  '/usr/bin/jupyter', '/usr/local/bin/jupyter']:
+            if os.path.exists(i):
+                return i
+        else:
+            path = None
+            print("Jupyter is not installed")
+            print("Quitting")
+            sys.exit(0)
+        
+    
+    def serve(self):
+        print("Starting jupyter labs server")
+        cmd = self.path + " lab -y --no-browser --ip={ip} --port={port} --port-retries=0".format(ip=self._ip, port=self._port)
+        args = shlex.split(cmd)
+        try:
+            jserver_output = Popen(args)
+            self.url="http://{}:{}".format(self._ip, self._port)
+            return True
+        except Exception as e:
+            print("Error {e} has occured.".format(e=e))
+            return False
+    
+    def set_port(self, port):
+        self._port = port
+    
+    def set_ip(self, ip):
+        self._ip = ip
+        
+    def install_jupyter(self):
+        print('#'*50)
+        print(" INSTALLING JUPYTER ")
+        print('#'*50)
+        os.system('pip3 install jupyter --user')
+        print("Install complete")
+        pass
+    
+    def shutdown(self):
+        os.system("jupyter notebook stop {}".format(self._port))
+
 
 class JupyterActivity(activity.Activity):
     def __init__(self, handle):
         activity.Activity.__init__(self, handle)
-        
+        self.jupy = Jupyter()
         # For now, collaboration is disabled.
         self.max_participants = 1
         self.build_toolbar()
+        
+        self._web_view = WebKit.WebView()
+        # self._web_view.set_full_content_zoom(True)
+
+        _scrolled_window = Gtk.ScrolledWindow()
+        _scrolled_window.add(self._web_view)
+        _scrolled_window.show()
+        self.set_canvas(_scrolled_window)
+        self._web_view.show()
+
+        if self.jupy.url:
+            self._web_view.load_uri(self.jupy.get_url())
 
     def build_toolbar(self):
         toolbar_box = ToolbarBox()
@@ -74,6 +149,11 @@ class JupyterActivity(activity.Activity):
 
         self.set_toolbar_box(toolbar_box)
         toolbar_box.show()
-    
+        
+
     def launch_jupyter_server(self):
         pass
+
+    def can_close(self):
+        self.jupy.shutdown()
+        return True
