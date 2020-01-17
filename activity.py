@@ -75,6 +75,7 @@ class Jupyter:
         try:
             jserver_output = Popen(args)
             self.url="http://{}:{}".format(self._ip, self._port)
+            print("Loaded ", self.url)
             return True
         except Exception as e:
             print("Error {e} has occured.".format(e=e))
@@ -115,8 +116,11 @@ class JupyterActivity(activity.Activity):
         self.set_canvas(_scrolled_window)
         self._web_view.show()
 
-        if self.jupy.url:
-            self._web_view.load_uri(self.jupy.get_url())
+        while not self.jupy.url:
+            if self.jupy.url:
+                
+                self._web_view.load_uri(self.jupy.url)
+                break
 
     def build_toolbar(self):
         toolbar_box = ToolbarBox()
