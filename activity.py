@@ -1,27 +1,35 @@
 #!/usr/bin/env python3
+"""
+Copyright (c) 2020 Srevin Saju <srevin03@gmail.com>
+JupyterLabs Activity for Sugar, MIT License
 
-# (c) 2020 Srevin Saju <srevin03@gmail.com> 
-#
-# JupyterLabs Activity for Sugar
-#
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+"""
 
 import os
 import sys
 import shlex
+
+
 import gi
+from sugar3.graphics.toolbutton import ToolButton
+
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk
 
@@ -33,6 +41,7 @@ except ModuleNotFoundError:
 from gettext import gettext as _
 
 from sugar3.activity import activity
+from sugar3.datastore import datastore
 from sugar3.graphics.toolbarbox import ToolbarBox
 from sugar3.activity.widgets import ActivityButton
 from sugar3.activity.widgets import TitleEntry
@@ -70,8 +79,9 @@ class Jupyter:
         sys.path.append('.')
         # Change directory to activity_root so that the ipynb files are saved to
         # the cwd, i.e. activity_root
-        os.chdir(activity.get_activity_root())
-
+        if not os.path.exists(os.path.join(activity.get_activity_root(), 'notebooks')):
+            os.makedirs(os.path.join(activity.get_activity_root(), 'notebooks'))
+        os.chdir(os.path.join(activity.get_activity_root(), 'notebooks'))
         self.path = self.get_jupyter_path()
         self.set_ip(ip)
         self.set_port(port)
@@ -99,7 +109,7 @@ class Jupyter:
             print("Jupyter is not installed")
             print("Trying to install")
             # FIXME Add offline support too
-            os.system("pip3 install jupyter jupyter-lab --user")
+            os.system("pip3 install jupyter jupyterlab --user")
             if self.get_jupyter_path():
                 return True
             else:
@@ -152,18 +162,14 @@ class Jupyter:
 class JupyterActivity(webactivity.WebActivity):
     def __init__(self, handle):
         self.jupy = Jupyter()
-
         self.url = self.jupy.get_url()
-
         # set URL to serve dir
         handle.uri = self.url
-
         webactivity.WebActivity.__init__(self, handle)
         self.browser = self._get_browser()
-        self.build_toolbar()
-        self.max_participants = 1
-
         # For now, collaboration is disabled.
+        self.max_participants = 1
+        self.build_toolbar()
 
     def build_toolbar(self):
         toolbar_box = ToolbarBox()
@@ -215,5 +221,13 @@ class JupyterActivity(webactivity.WebActivity):
         pass
 
     def can_close(self):
+        # Jupyter doesn't need to save files using write_file or the read_file
+        # Jupyter has its own configuration file which loads the
+        # last edited file.
+        # It is safer to let Jupyter handle its stuff.
         self.jupy.shutdown()
         return True
+
+
+
+
