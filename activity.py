@@ -42,18 +42,47 @@ from sugar3.activity.widgets import DescriptionItem
 
 from subprocess import Popen, PIPE
 
+
+# Import Webactivity from Sugar's Built In Brownse Activity
+
+browse_path = None
+try:
+    from sugar3.activity.activity import get_bundle
+    browse_bundle = get_bundle('org.sugarlabs.WebActivity')
+    browse_path = browse_bundle.get_path()
+except:
+    if os.path.exists('../Browse.activity'):
+        browse_path = '../Browse.activity'
+    elif os.path.exists('/usr/share/sugar/activities/Browse.activity'):
+        browse_path = '/usr/share/sugar/activities/Browse.activity'
+    elif os.path.exists(os.path.expanduser('~/Activities/Browse.activity')):
+        browse_path = os.path.expanduser('~/Activities/Browse.activity')
+
+if browse_path is None:
+    print('This activity need a Browser activity installed to run')
+
+sys.path.append(browse_path)
+import webactivity
+
 class Jupyter:
     def __init__(self, ip='localhost', port='4444'):
         self.path = self.get_jupyter_path()
         self.set_ip(ip)
         self.set_port(port)
         self.serve()
-        self.url = None
-        
+        self.url_base = 'http://{}:{}'
         pass
     
     def get_url(self):
-        return self.uri
+        return self.url
+
+    def set_url(self, url):
+        if url.startswith('http'):
+            self.url = url
+            return True
+        else:
+            print("ERR: Badly formatted URL")
+            return False
     
     def get_jupyter_path(self):
         
@@ -64,19 +93,34 @@ class Jupyter:
         else:
             path = None
             print("Jupyter is not installed")
-            print("Quitting")
-            sys.exit(0)
+            print("Trying to install")
+            # FIXME Add offline support too
+            os.system("pip3 install jupyter jupyter-lab --user")
+            if self.get_jupyter_path():
+                return True
+            else:
+                sys.exit(0)
         
     
     def serve(self):
         print("Starting jupyter labs server")
         cmd = self.path + " lab -y --no-browser --ip={ip} --port={port} --port-retries=0".format(ip=self._ip, port=self._port)
         args = shlex.split(cmd)
+        httpfound = False
         try:
-            jserver_output = Popen(args)
-            self.url="http://{}:{}".format(self._ip, self._port)
-            print("Loaded ", self.url)
-            return True
+            jserver_output = Popen(args, stdout=PIPE, stderr=PIPE)
+            tmp_output = jserver_output.stderr.readline().decode()
+            while 'http' not in tmp_output:
+                if httpfound:
+                    break
+                tmp_output = jserver_output.stderr.readline().decode()
+            else:
+                httpfound = True
+                url = tmp_output[tmp_output.find('http'):tmp_output.find(' ', tmp_output.find('http'))]
+                print("Loading URL:", url)
+                self.set_url(url)
+                return True
+
         except Exception as e:
             print("Error {e} has occured.".format(e=e))
             return False
@@ -99,28 +143,21 @@ class Jupyter:
         os.system("jupyter notebook stop {}".format(self._port))
 
 
-class JupyterActivity(activity.Activity):
+class JupyterActivity(webactivity.WebActivity):
     def __init__(self, handle):
-        activity.Activity.__init__(self, handle)
         self.jupy = Jupyter()
-        # For now, collaboration is disabled.
-        self.max_participants = 1
+
+        self.url = self.jupy.get_url()
+
+        # set URL to serve dir
+        handle.uri = self.url
+
+        webactivity.WebActivity.__init__(self, handle)
+        self.browser = self._get_browser()
         self.build_toolbar()
-        
-        self._web_view = WebKit.WebView()
-        # self._web_view.set_full_content_zoom(True)
+        self.max_participants = 1
 
-        _scrolled_window = Gtk.ScrolledWindow()
-        _scrolled_window.add(self._web_view)
-        _scrolled_window.show()
-        self.set_canvas(_scrolled_window)
-        self._web_view.show()
-
-        while not self.jupy.url:
-            if self.jupy.url:
-                
-                self._web_view.load_uri(self.jupy.url)
-                break
+        # For now, collaboration is disabled.
 
     def build_toolbar(self):
         toolbar_box = ToolbarBox()
@@ -153,7 +190,20 @@ class JupyterActivity(activity.Activity):
 
         self.set_toolbar_box(toolbar_box)
         toolbar_box.show()
-        
+
+    def _get_browser(self):
+        if hasattr(self, '_browser'):
+            # Browse < 109
+            return self._browser
+        else:
+            return self._tabbed_view.props.current_browser
+
+    def _go_home_button_cb(self, button):
+        home_url = 'http://%s:%s%s' % (
+            self.confvars['ip'], self.confvars['port'],
+            self.confvars['home_page'])
+        browser = self._get_browser()
+        browser.load_uri(home_url)
 
     def launch_jupyter_server(self):
         pass
