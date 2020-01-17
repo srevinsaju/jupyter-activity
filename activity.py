@@ -25,14 +25,11 @@ SOFTWARE.
 import os
 import sys
 import shlex
-
-
 import gi
-from sugar3.graphics.toolbutton import ToolButton
-
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk
+gi.require_version('WebKit2', '4.0')
 
+from gi.repository import Gtk, GLib, Gio
 try:
     from gi.repository import WebKit2 as WebKit
 except ModuleNotFoundError:
@@ -41,7 +38,6 @@ except ModuleNotFoundError:
 from gettext import gettext as _
 
 from sugar3.activity import activity
-from sugar3.datastore import datastore
 from sugar3.graphics.toolbarbox import ToolbarBox
 from sugar3.activity.widgets import ActivityButton
 from sugar3.activity.widgets import TitleEntry
@@ -51,9 +47,7 @@ from sugar3.activity.widgets import DescriptionItem
 
 from subprocess import Popen, PIPE
 
-
 # Import Webactivity from Sugar's Built In Brownse Activity
-
 browse_path = None
 try:
     from sugar3.activity.activity import get_bundle
@@ -71,22 +65,56 @@ if browse_path is None:
     print('This activity need a Browser activity installed to run')
 
 sys.path.append(browse_path)
+
 import webactivity
 
+
+def get_path(path):
+    for i in [os.path.expanduser('~/.local/bin/{}'.format(path)), os.path.expanduser('~/bin/{}'.format(path)),
+              '/usr/bin/{}'.format(path), '/usr/local/bin/{}'.format(path)]:
+        if os.path.exists(i):
+            return i
+    else:
+        return False
+
+
+def check_path(exe):
+    path = get_path(exe)
+    if path:
+        return path
+    else:
+        msg = '{e} is not a valid executable. Please check if {e} is installed and is on PATH'.format(e=exe)
+        print(msg)
+        raise FileNotFoundError(msg)
+
+
 class Jupyter:
-    def __init__(self, ip='localhost', port='4444'):
+    def __init__(self, parent, ip='localhost', port='4444'):
+
+        # set ports and IP address, and url
+        self._port = port
+        self._ip = ip
+        self.url = None
+
         # Add the current path to PATH to access modules
+        self.parent = parent
         sys.path.append('.')
-        # Change directory to activity_root so that the ipynb files are saved to
-        # the cwd, i.e. activity_root
+
+        # save file to notebooks to get_activity_root()
         if not os.path.exists(os.path.join(activity.get_activity_root(), 'notebooks')):
             os.makedirs(os.path.join(activity.get_activity_root(), 'notebooks'))
         os.chdir(os.path.join(activity.get_activity_root(), 'notebooks'))
-        self.path = self.get_jupyter_path()
+
+        # install ip, port
         self.set_ip(ip)
         self.set_port(port)
+        self.path = None
+
+    def bootstrap(self):
+        self.path = check_path('jupyter-lab')
+        print(self.path)
         self.serve()
-    
+
     def get_url(self):
         return self.url
 
@@ -97,39 +125,23 @@ class Jupyter:
         else:
             print("ERR: Badly formatted URL")
             return False
-    
-    def get_jupyter_path(self):
-        
-        for i in [os.path.expanduser('~/.local/bin/jupyter'), os.path.expanduser('~/bin/jupyter'), 
-                  '/usr/bin/jupyter', '/usr/local/bin/jupyter']:
-            if os.path.exists(i):
-                return i
-        else:
-            path = None
-            print("Jupyter is not installed")
-            print("Trying to install")
-            # FIXME Add offline support too
-            os.system("pip3 install jupyter jupyterlab --user")
-            if self.get_jupyter_path():
-                return True
-            else:
-                sys.exit(0)
-        
-    
+
+    def set_port(self, port):
+        self._port = port
+
+    def set_ip(self, ip):
+        self._ip = ip
+
     def serve(self):
         print("Starting jupyter labs server")
-        cmd = self.path + " lab -y --no-browser --ip={ip} --port={port}".format(ip=self._ip, port=self._port)
+        cmd = self.path + " -y --no-browser --ip={ip} --port={port}".format(ip=self._ip, port=self._port)
         args = shlex.split(cmd)
-        httpfound = False
         try:
             jserver_output = Popen(args, stdout=PIPE, stderr=PIPE)
             tmp_output = jserver_output.stderr.readline().decode()
             while 'http' not in tmp_output:
-                if httpfound:
-                    break
                 tmp_output = jserver_output.stderr.readline().decode()
             else:
-                httpfound = True
                 url = tmp_output[tmp_output.find('http'):tmp_output.find(' ', tmp_output.find('http'))]
                 print("Loading URL:", url)
                 self.set_url(url)
@@ -138,38 +150,50 @@ class Jupyter:
                 return True
 
         except Exception as e:
-            print("Error {e} has occured.".format(e=e))
+            print("Error {e} has occurred.".format(e=e))
             return False
-    
-    def set_port(self, port):
-        self._port = port
-    
-    def set_ip(self, ip):
-        self._ip = ip
-        
-    def install_jupyter(self):
-        print('#'*50)
-        print(" INSTALLING JUPYTER ")
-        print('#'*50)
-        os.system('pip3 install jupyter --user')
-        print("Install complete")
-        pass
-    
+
     def shutdown(self):
-        Popen(shlex.split("jupyter notebook stop {}".format(self._port)))
+        Gio.Subprocess.new(shlex.split("jupyter-notebook stop {}".format(self._port)), 0)
 
 
 class JupyterActivity(webactivity.WebActivity):
     def __init__(self, handle):
-        self.jupy = Jupyter()
-        self.url = self.jupy.get_url()
-        # set URL to serve dir
-        handle.uri = self.url
-        webactivity.WebActivity.__init__(self, handle)
-        self.browser = self._get_browser()
         # For now, collaboration is disabled.
+        self.handle = handle
+        # init Jupyter
+        self.jupy = Jupyter(self)
+        
+        if not get_path('jupyter-lab'):
+            handle.uri = "file://{}/static/index.html".format(activity.get_bundle_path())
+        else:
+            self.jupy.bootstrap()
+            handle.uri = self.jupy.get_url()
+        webactivity.WebActivity.__init__(self, handle)
+
+        # set URL to serve dir
+        self.browser = self._get_browser()
         self.max_participants = 1
         self.build_toolbar()
+        if not get_path('jupyter-lab'):
+            self.install_jupyter()
+
+    def install_jupyter(self):
+        # install jupyter
+        print("Installing Jupyter")
+        pip3_path = check_path('pip3')
+        pip_installer = Gio.Subprocess.new(
+            shlex.split("{} install jupyter notebook jupyterlab --user".format(pip3_path)), 0)
+        pip_installer.wait_check_async(None, self._on_update_finished)
+        return True
+
+    def _on_update_finished(self, process, result):
+        process.wait_check_finish(result)
+        self.load_jupyter()
+
+    def load_jupyter(self):
+        self.jupy.bootstrap()
+        self.browser.load_uri(self.jupy.get_url())
 
     def build_toolbar(self):
         toolbar_box = ToolbarBox()
@@ -210,24 +234,23 @@ class JupyterActivity(webactivity.WebActivity):
         else:
             return self._tabbed_view.props.current_browser
 
-    def _go_home_button_cb(self, button):
-        home_url = 'http://%s:%s%s' % (
-            self.confvars['ip'], self.confvars['port'],
-            self.confvars['home_page'])
-        browser = self._get_browser()
-        browser.load_uri(home_url)
+    def __new_tab_cb(self, browser, url):
+        new_browser = self.add_tab(next_to_current=True)
+        new_browser.load_uri(url)
+        new_browser.grab_focus()
 
-    def launch_jupyter_server(self):
-        pass
+    def _go_home_button_cb(self, button):
+        self.browser.load_uri(self.jupy.get_url())
 
     def can_close(self):
         # Jupyter doesn't need to save files using write_file or the read_file
         # Jupyter has its own configuration file which loads the
         # last edited file.
         # It is safer to let Jupyter handle its stuff.
-        self.jupy.shutdown()
+        try:
+            self.jupy.shutdown()
+        except FileExistsError:
+            print("LOG: jupyter-notebook is not installed. Quitting")
+            pass
         return True
-
-
-
 
