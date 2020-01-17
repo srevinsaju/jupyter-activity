@@ -66,12 +66,16 @@ import webactivity
 
 class Jupyter:
     def __init__(self, ip='localhost', port='4444'):
+        # Add the current path to PATH to access modules
+        sys.path.append('.')
+        # Change directory to activity_root so that the ipynb files are saved to
+        # the cwd, i.e. activity_root
+        os.chdir(activity.get_activity_root())
+
         self.path = self.get_jupyter_path()
         self.set_ip(ip)
         self.set_port(port)
         self.serve()
-        self.url_base = 'http://{}:{}'
-        pass
     
     def get_url(self):
         return self.url
@@ -104,7 +108,7 @@ class Jupyter:
     
     def serve(self):
         print("Starting jupyter labs server")
-        cmd = self.path + " lab -y --no-browser --ip={ip} --port={port} --port-retries=0".format(ip=self._ip, port=self._port)
+        cmd = self.path + " lab -y --no-browser --ip={ip} --port={port}".format(ip=self._ip, port=self._port)
         args = shlex.split(cmd)
         httpfound = False
         try:
@@ -119,6 +123,8 @@ class Jupyter:
                 url = tmp_output[tmp_output.find('http'):tmp_output.find(' ', tmp_output.find('http'))]
                 print("Loading URL:", url)
                 self.set_url(url)
+                self.set_port(url.split(":")[2][:url.split(':')[2].find('/')])
+                self.set_ip(url.split(":")[1][url.split(':')[1].find('/')+2:])
                 return True
 
         except Exception as e:
@@ -140,7 +146,7 @@ class Jupyter:
         pass
     
     def shutdown(self):
-        os.system("jupyter notebook stop {}".format(self._port))
+        Popen(shlex.split("jupyter notebook stop {}".format(self._port)))
 
 
 class JupyterActivity(webactivity.WebActivity):
