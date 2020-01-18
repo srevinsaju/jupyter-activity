@@ -21,11 +21,12 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
-
+import logging
 import os
 import sys
 import shlex
 import gi
+
 gi.require_version('Gtk', '3.0')
 gi.require_version('WebKit2', '4.0')
 
@@ -34,7 +35,7 @@ try:
     from gi.repository import WebKit2 as WebKit
 except ModuleNotFoundError:
     from gi.repository import WebKit
-
+import server
 from gettext import gettext as _
 
 from sugar3.activity import activity
@@ -44,7 +45,7 @@ from sugar3.activity.widgets import TitleEntry
 from sugar3.activity.widgets import StopButton
 from sugar3.activity.widgets import ShareButton
 from sugar3.activity.widgets import DescriptionItem
-
+os.chdir(activity.get_bundle_path())
 from subprocess import Popen, PIPE
 
 # Import Webactivity from Sugar's Built In Brownse Activity
@@ -62,7 +63,7 @@ except:
         browse_path = os.path.expanduser('~/Activities/Browse.activity')
 
 if browse_path is None:
-    print('This activity need a Browser activity installed to run')
+    logging.warning('This activity need a Browser activity installed to run')
 
 sys.path.append(browse_path)
 
@@ -84,7 +85,7 @@ def check_path(exe):
         return path
     else:
         msg = '{e} is not a valid executable. Please check if {e} is installed and is on PATH'.format(e=exe)
-        print(msg)
+        logging.warning(msg)
         raise FileNotFoundError(msg)
 
 
@@ -98,12 +99,12 @@ class Jupyter:
 
         # Add the current path to PATH to access modules
         self.parent = parent
-        sys.path.append('.')
+        # sys.path.append('.')
 
         # save file to notebooks to get_activity_root()
         if not os.path.exists(os.path.join(activity.get_activity_root(), 'notebooks')):
             os.makedirs(os.path.join(activity.get_activity_root(), 'notebooks'))
-        os.chdir(os.path.join(activity.get_activity_root(), 'notebooks'))
+        # os.chdir(os.path.join(activity.get_activity_root(), 'notebooks'))
 
         # install ip, port
         self.set_ip(ip)
@@ -112,7 +113,7 @@ class Jupyter:
 
     def bootstrap(self):
         self.path = check_path('jupyter-lab')
-        print(self.path)
+        logging.warning(self.path)
         self.serve()
 
     def get_url(self):
@@ -123,7 +124,7 @@ class Jupyter:
             self.url = url
             return True
         else:
-            print("ERR: Badly formatted URL")
+            logging.warning("ERR: Badly formatted URL")
             return False
 
     def set_port(self, port):
@@ -133,24 +134,25 @@ class Jupyter:
         self._ip = ip
 
     def serve(self):
-        print("Starting jupyter labs server")
+        logging.warning("Starting jupyter labs server")
         cmd = self.path + " -y --no-browser --ip={ip} --port={port}".format(ip=self._ip, port=self._port)
         args = shlex.split(cmd)
         try:
+            os.chdir(activity.get_activity_root())
             jserver_output = Popen(args, stdout=PIPE, stderr=PIPE)
             tmp_output = jserver_output.stderr.readline().decode()
-            while 'http' not in tmp_output:
+            while ('http' not in tmp_output) and ('token' not in tmp_output):
                 tmp_output = jserver_output.stderr.readline().decode()
             else:
                 url = tmp_output[tmp_output.find('http'):tmp_output.find(' ', tmp_output.find('http'))]
-                print("Loading URL:", url)
+                logging.warning("Loading URL:", url)
                 self.set_url(url)
                 self.set_port(url.split(":")[2][:url.split(':')[2].find('/')])
                 self.set_ip(url.split(":")[1][url.split(':')[1].find('/')+2:])
                 return True
 
         except Exception as e:
-            print("Error {e} has occurred.".format(e=e))
+            logging.error("Error {e} has occurred.".format(e=e))
             return False
 
     def shutdown(self):
@@ -160,27 +162,31 @@ class Jupyter:
 class JupyterActivity(webactivity.WebActivity):
     def __init__(self, handle):
         # For now, collaboration is disabled.
-        self.handle = handle
         # init Jupyter
         self.jupy = Jupyter(self)
-        
+        # TODO, doesn't work atm, sugar-activity3 works on cwd works
+
         if not get_path('jupyter-lab'):
-            handle.uri = "file://{}/static/index.html".format(activity.get_bundle_path())
+            os.chdir(activity.get_bundle_path())
+            handle.uri = "file://{}/static/sugar.html".format(activity.get_bundle_path())
+            logging.warning(handle.uri)
         else:
             self.jupy.bootstrap()
             handle.uri = self.jupy.get_url()
+
         webactivity.WebActivity.__init__(self, handle)
 
         # set URL to serve dir
         self.browser = self._get_browser()
         self.max_participants = 1
         self.build_toolbar()
+
         if not get_path('jupyter-lab'):
             self.install_jupyter()
 
     def install_jupyter(self):
         # install jupyter
-        print("Installing Jupyter")
+        logging.warning("Installing Jupyter")
         pip3_path = check_path('pip3')
         pip_installer = Gio.Subprocess.new(
             shlex.split("{} install jupyter notebook jupyterlab --user".format(pip3_path)), 0)
@@ -250,7 +256,7 @@ class JupyterActivity(webactivity.WebActivity):
         try:
             self.jupy.shutdown()
         except FileExistsError:
-            print("LOG: jupyter-notebook is not installed. Quitting")
+            logging.warning("LOG: jupyter-notebook is not installed. Quitting")
             pass
         return True
 
