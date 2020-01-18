@@ -134,7 +134,7 @@ class Jupyter:
         self._ip = ip
 
     def serve(self):
-        logging.warning("Starting jupyter labs server")
+        logging.debug("Starting jupyter labs server")
         cmd = self.path + " -y --no-browser --ip={ip} --port={port}".format(ip=self._ip, port=self._port)
         args = shlex.split(cmd)
         try:
@@ -145,7 +145,7 @@ class Jupyter:
                 tmp_output = jserver_output.stderr.readline().decode()
             else:
                 url = tmp_output[tmp_output.find('http'):tmp_output.find(' ', tmp_output.find('http'))]
-                logging.warning("Loading URL:", url)
+                logging.debug("Loading URL:", url)
                 self.set_url(url)
                 self.set_port(url.split(":")[2][:url.split(':')[2].find('/')])
                 self.set_ip(url.split(":")[1][url.split(':')[1].find('/')+2:])
@@ -169,7 +169,7 @@ class JupyterActivity(webactivity.WebActivity):
         if not get_path('jupyter-lab'):
             os.chdir(activity.get_bundle_path())
             handle.uri = "file://{}/static/sugar.html".format(activity.get_bundle_path())
-            logging.warning(handle.uri)
+            logging.debug(handle.uri)
         else:
             self.jupy.bootstrap()
             handle.uri = self.jupy.get_url()
@@ -186,7 +186,7 @@ class JupyterActivity(webactivity.WebActivity):
 
     def install_jupyter(self):
         # install jupyter
-        logging.warning("Installing Jupyter")
+        logging.debug("Installing Jupyter")
         pip3_path = check_path('pip3')
         pip_installer = Gio.Subprocess.new(
             shlex.split("{} install jupyter notebook jupyterlab --user".format(pip3_path)), 0)
