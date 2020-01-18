@@ -21,56 +21,46 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
+
+import gi
+
+from viewtoolbar import ViewToolbar
+
+gi.require_version('Gtk', '3.0')
+gi.require_version('WebKit2', '4.0')
 import logging
 import os
 import sys
 import shlex
-import gi
 
-gi.require_version('Gtk', '3.0')
-gi.require_version('WebKit2', '4.0')
-
+from gi.repository import GObject
+from sugar3.graphics.toolbutton import ToolButton
 from gi.repository import Gtk, GLib, Gio
 try:
     from gi.repository import WebKit2 as WebKit
 except ModuleNotFoundError:
-    from gi.repository import WebKit
-import server
+    from gi.repository import WebKit  # for backward compatibility
 from gettext import gettext as _
-
 from sugar3.activity import activity
-from sugar3.graphics.toolbarbox import ToolbarBox
-from sugar3.activity.widgets import ActivityButton
-from sugar3.activity.widgets import TitleEntry
+from sugar3.graphics.toolbarbox import ToolbarBox, ToolbarButton
+from sugar3.activity.widgets import ActivityToolbarButton
 from sugar3.activity.widgets import StopButton
-from sugar3.activity.widgets import ShareButton
-from sugar3.activity.widgets import DescriptionItem
 os.chdir(activity.get_bundle_path())
 from subprocess import Popen, PIPE
 
-# Import Webactivity from Sugar's Built In Brownse Activity
-browse_path = None
-try:
-    from sugar3.activity.activity import get_bundle
-    browse_bundle = get_bundle('org.sugarlabs.WebActivity')
-    browse_path = browse_bundle.get_path()
-except:
-    if os.path.exists('../Browse.activity'):
-        browse_path = '../Browse.activity'
-    elif os.path.exists('/usr/share/sugar/activities/Browse.activity'):
-        browse_path = '/usr/share/sugar/activities/Browse.activity'
-    elif os.path.exists(os.path.expanduser('~/Activities/Browse.activity')):
-        browse_path = os.path.expanduser('~/Activities/Browse.activity')
 
-if browse_path is None:
-    logging.warning('This activity need a Browser activity installed to run')
-
-sys.path.append(browse_path)
-
-import webactivity
+def get_index_uri(loader='installer'):
+    """ Returns static/installer.html if jupyter doesn't exist, else loads static/init.html """
+    os.chdir(activity.get_bundle_path())
+    index_path = os.path.join(activity.get_bundle_path(), 'static/{}.html'.format(loader))
+    if not os.path.isfile(index_path):
+        index_path = os.path.join(
+            activity.get_bundle_path(), 'static/{}.html'.format(loader))
+    return 'file://' + index_path
 
 
 def get_path(path):
+    """ Checks path exists, if yes, returns path, else returns False  """
     for i in [os.path.expanduser('~/.local/bin/{}'.format(path)), os.path.expanduser('~/bin/{}'.format(path)),
               '/usr/bin/{}'.format(path), '/usr/local/bin/{}'.format(path)]:
         if os.path.exists(i):
@@ -80,26 +70,46 @@ def get_path(path):
 
 
 def check_path(exe):
+    """ Checks path exists, if yes, returns path, else raises FileNotFoundError """
     path = get_path(exe)
     if path:
         return path
     else:
-        msg = '{e} is not a valid executable. Please check if {e} is installed and is on PATH'.format(e=exe)
-        logging.warning(msg)
-        raise FileNotFoundError(msg)
+        if exe=='pip3':
+            msg = '{e} is not a valid executable. Please check if {e} is installed and is on PATH'.format(e=exe)
+            logging.error(msg)
+            return False
+        else:
+            msg = '{e} is not a valid executable. Please check if {e} is installed and is on PATH'.format(e=exe)
+            logging.error(msg)
+            raise FileNotFoundError(msg)
 
 
 class Jupyter:
+    """
+    Jupyter Loader
+    Jupyter object which handles
+    (i) Installation
+    (ii) Server
+    (iii) Data Management
+    (iv) Path definitions
+    (v) Destroy
+    """
     def __init__(self, parent, ip='localhost', port='4444'):
+        """
+        Initiate variables
+        :param parent: the caller of Jupyter Class
+        :param ip: IP address where a user would like to host Jupyter Activity
+        :param port: Port where Jupyter would serve
+        """
 
         # set ports and IP address, and url
         self._port = port
         self._ip = ip
         self.url = None
 
-        # Add the current path to PATH to access modules
         self.parent = parent
-        # sys.path.append('.')
+        sys.path.append('.')
 
         # save file to notebooks to get_activity_root()
         if not os.path.exists(os.path.join(activity.get_activity_root(), 'notebooks')):
@@ -112,14 +122,30 @@ class Jupyter:
         self.path = None
 
     def bootstrap(self):
+        """
+        Start jupyter-lab, if it exists, else raise FileNotFoundError.
+        :return: None
+        """
         self.path = check_path('jupyter-lab')
         logging.warning(self.path)
-        self.serve()
+        if self.serve():
+            return True
+        else:
+            self.parent.web_view.load_uri(get_index_uri('failed'))
 
     def get_url(self):
+        """
+        Gets URL of the jupyter server with token
+        :return: URL after Jupyter lab server is initated
+        """
         return self.url
 
     def set_url(self, url):
+        """
+        Update the object variable declaration of URL, with a valid URL
+        :param url: Jupyter Server URL
+        :return: True if valid url, else false
+        """
         if url.startswith('http'):
             self.url = url
             return True
@@ -134,15 +160,23 @@ class Jupyter:
         self._ip = ip
 
     def serve(self):
+        """
+        Starts Jupyter labs.
+        Using subprocess module, serve method reads for terminal output until
+        valid URL with token- is given.
+        Try executing jupyter-labs to check sample output.
+
+        :return: True, if URL is valid, server started successfully , else False
+        """
         logging.debug("Starting jupyter labs server")
         cmd = self.path + " -y --no-browser --ip={ip} --port={port}".format(ip=self._ip, port=self._port)
         args = shlex.split(cmd)
         try:
-            os.chdir(activity.get_activity_root())
-            jserver_output = Popen(args, stdout=PIPE, stderr=PIPE)
-            tmp_output = jserver_output.stderr.readline().decode()
+            os.chdir(os.path.join(activity.get_activity_root(), 'notebooks'))
+            jupyter_server_output = Popen(args, stdout=PIPE, stderr=PIPE)
+            tmp_output = jupyter_server_output.stderr.readline().decode()
             while ('http' not in tmp_output) and ('token' not in tmp_output):
-                tmp_output = jserver_output.stderr.readline().decode()
+                tmp_output = jupyter_server_output.stderr.readline().decode()
             else:
                 url = tmp_output[tmp_output.find('http'):tmp_output.find(' ', tmp_output.find('http'))]
                 logging.debug("Loading URL:", url)
@@ -156,69 +190,86 @@ class Jupyter:
             return False
 
     def shutdown(self):
+        """
+        Safely shutdown jupyter labs server.
+        Jupyter Labs server can use CPU cycles if left unhandled.
+        :return: None
+        """
         Gio.Subprocess.new(shlex.split("jupyter-notebook stop {}".format(self._port)), 0)
 
 
-class JupyterActivity(webactivity.WebActivity):
+class JupyterActivity(activity.Activity):
+    """
+    JupyterActivity Class is an edited helpactivity.py from sugarlabs
+    """
     def __init__(self, handle):
-        # For now, collaboration is disabled.
-        # init Jupyter
+        activity.Activity.__init__(self, handle)
+
+        # init Jupyter Object
         self.jupy = Jupyter(self)
-        # TODO, doesn't work atm, sugar-activity3 works on cwd works
 
-        if not get_path('jupyter-lab'):
-            os.chdir(activity.get_bundle_path())
-            handle.uri = "file://{}/static/sugar.html".format(activity.get_bundle_path())
-            logging.debug(handle.uri)
-        else:
-            self.jupy.bootstrap()
-            handle.uri = self.jupy.get_url()
+        self.props.max_participants = 1
 
-        webactivity.WebActivity.__init__(self, handle)
+        self.web_view = WebKit.WebView()
 
-        # set URL to serve dir
-        self.browser = self._get_browser()
-        self.max_participants = 1
+        self._scrolled_window = Gtk.ScrolledWindow()
+        self._scrolled_window.add(self.web_view)
+        self._scrolled_window.show()
         self.build_toolbar()
-
-        if not get_path('jupyter-lab'):
+        self.set_canvas(self._scrolled_window)
+        self.web_view.show()
+        jupyter_path = get_path('jupyter-lab')   # returns path if exists, else false
+        if jupyter_path:
+            loader = 'init'  # need to call init on OLPCs with slow CPU cycle. Server might start slow
+        else:
+            loader = 'installer'
+        self.web_view.load_uri(get_index_uri(loader))
+        if jupyter_path:
+            self.load_jupyter()
+        else:
             self.install_jupyter()
-
-    def install_jupyter(self):
-        # install jupyter
-        logging.debug("Installing Jupyter")
-        pip3_path = check_path('pip3')
-        pip_installer = Gio.Subprocess.new(
-            shlex.split("{} install jupyter notebook jupyterlab --user".format(pip3_path)), 0)
-        pip_installer.wait_check_async(None, self._on_update_finished)
-        return True
-
-    def _on_update_finished(self, process, result):
-        process.wait_check_finish(result)
-        self.load_jupyter()
-
-    def load_jupyter(self):
-        self.jupy.bootstrap()
-        self.browser.load_uri(self.jupy.get_url())
 
     def build_toolbar(self):
         toolbar_box = ToolbarBox()
 
-        activity_button = ActivityButton(self)
+        activity_button = ActivityToolbarButton(self)
         toolbar_box.toolbar.insert(activity_button, 0)
         activity_button.show()
 
-        title_entry = TitleEntry(self)
-        toolbar_box.toolbar.insert(title_entry, -1)
-        title_entry.show()
+        viewtoolbar = ViewToolbar(self)
+        viewbutton = ToolbarButton(page=viewtoolbar,
+                                   icon_name='toolbar-view')
+        toolbar_box.toolbar.insert(viewbutton, -1)
+        viewbutton.show()
 
-        description_item = DescriptionItem(self)
-        toolbar_box.toolbar.insert(description_item, -1)
-        description_item.show()
+        separator = Gtk.SeparatorToolItem()
+        toolbar_box.toolbar.insert(separator, -1)
+        separator.show()
 
-        share_button = ShareButton(self)
-        toolbar_box.toolbar.insert(share_button, -1)
-        share_button.show()
+        # lets reuse the code below
+        navtoolbar = Toolbar(self.web_view, self)
+
+        toolitem = Gtk.ToolItem()
+        navtoolbar._home.reparent(toolitem)
+        toolbar_box.toolbar.insert(toolitem, -1)
+        navtoolbar._home.show()
+        toolitem.show()
+
+        toolitem = Gtk.ToolItem()
+        navtoolbar._back.reparent(toolitem)
+        toolbar_box.toolbar.insert(toolitem, -1)
+        navtoolbar._back.show()
+        toolitem.show()
+
+        toolitem = Gtk.ToolItem()
+        navtoolbar._forward.reparent(toolitem)
+        toolbar_box.toolbar.insert(toolitem, -1)
+        navtoolbar._forward.show()
+        toolitem.show()
+
+        # we do not have collaboration features
+        # make the share option insensitive
+        self.max_participants = 1
 
         separator = Gtk.SeparatorToolItem()
         separator.props.draw = False
@@ -233,20 +284,43 @@ class JupyterActivity(webactivity.WebActivity):
         self.set_toolbar_box(toolbar_box)
         toolbar_box.show()
 
-    def _get_browser(self):
-        if hasattr(self, '_browser'):
-            # Browse < 109
-            return self._browser
+    def install_jupyter(self):
+        """
+        Install Jupyter
+        This method should not be moved to Jupyter Object.
+        This method uses Gio.subprocess to check if pip3 install jupyter installation completed
+        Gio.subprocess removes the hassle of threading, this provides a smooth experience
+        for the user, who wouldn't want to install anything
+
+        :return:True if installation was called, False if pip3 was not installs
+        """
+        logging.debug("Installing Jupyter")
+        pip3_path = check_path('pip3')
+        if pip3_path:
+            pass
         else:
-            return self._tabbed_view.props.current_browser
+            self.web_view.load_uri(get_index_uri('nopip3'))
+            return False
+        pip_installer = Gio.Subprocess.new(
+            shlex.split("{} install jupyter notebook jupyterlab --user".format(pip3_path)), 0)
+        pip_installer.wait_check_async(None, self._on_update_finished)
+        return True
 
-    def __new_tab_cb(self, browser, url):
-        new_browser = self.add_tab(next_to_current=True)
-        new_browser.load_uri(url)
-        new_browser.grab_focus()
+    def _on_update_finished(self, process, result):
+        process.wait_check_finish(result)
+        self.load_jupyter()
 
-    def _go_home_button_cb(self, button):
-        self.browser.load_uri(self.jupy.get_url())
+    def load_jupyter(self):
+        self.jupy.bootstrap()
+        self.web_view.load_uri(self.jupy.get_url())
+
+    def read_file(self, file_path):
+        # JupyterLabs have their own configuration file system, and opens the last modified
+        # file when its loaded. So basically, we would not like to mess with it.
+        pass
+
+    def write_file(self, file_path):
+        pass
 
     def can_close(self):
         # Jupyter doesn't need to save files using write_file or the read_file
@@ -256,7 +330,65 @@ class JupyterActivity(webactivity.WebActivity):
         try:
             self.jupy.shutdown()
         except FileExistsError:
-            logging.warning("LOG: jupyter-notebook is not installed. Quitting")
+            logging.warning("LOG: jupyter-notebook is not installed. Server might not be shutdown")
             pass
         return True
 
+
+class Toolbar(Gtk.Toolbar):
+    """
+    Modified HelpActivity Toolbar Class Object (c) SugarLabs
+    """
+    def __init__(self, web_view, parent):
+        GObject.GObject.__init__(self)
+        self.parent = parent
+        self.web_view = web_view
+
+        self._back = ToolButton('go-previous-paired')
+        self._back.set_tooltip(_('Back'))
+        self._back.props.sensitive = False
+        self._back.connect('clicked', self._go_back_cb)
+        self.insert(self._back, -1)
+        self._back.show()
+
+        self._forward = ToolButton('go-next-paired')
+        self._forward.set_tooltip(_('Forward'))
+        self._forward.props.sensitive = False
+        self._forward.connect('clicked', self._go_forward_cb)
+        self.insert(self._forward, -1)
+        self._forward.show()
+
+        self._home = ToolButton('go-home')
+        self._home.set_tooltip(_('Home'))
+        self._home.connect('clicked', self._go_home_cb)
+        self.insert(self._home, -1)
+        self._home.show()
+
+        self.web_view.connect('notify::uri', self._uri_changed_cb)
+
+    def _uri_changed_cb(self, progress_listener, uri):
+        self.update_navigation_buttons()
+
+    def _loading_stop_cb(self, progress_listener):
+        self.update_navigation_buttons()
+
+    def update_navigation_buttons(self):
+        self._back.props.sensitive = self.web_view.can_go_back()
+        self._forward.props.sensitive = self.web_view.can_go_forward()
+
+    def _go_back_cb(self, button):
+        self.web_view.go_back()
+
+    def _go_forward_cb(self, button):
+        self.web_view.go_forward()
+
+    def _go_home_cb(self, button):
+        """
+        Changes the web_view to static/init.html, if homebutton pressed while installation in progress
+        Else change it to Jupyter.url
+        """
+        jupyter_url = self.parent.jupy.get_url()
+        if jupyter_url:
+            self.web_view.load_uri(jupyter_url)
+        else:
+            self.web_view.load_uri(get_index_uri('init'))
