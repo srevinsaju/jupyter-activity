@@ -1,0 +1,1 @@
+pip3 download -r requirement.txt --dest=jupyter-bundle
