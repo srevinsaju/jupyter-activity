@@ -1,6 +1,6 @@
 <img src=https://upload.wikimedia.org/wikipedia/commons/thumb/3/38/Jupyter_logo.svg/883px-Jupyter_logo.svg.png width=25%>
 
-# Jupyter Activity
+# Jupyter Activity (beta)
 >**Jupyter Notebook** formerly IPython Notebooks) is a web-based 
 interactive computational environment for creating Jupyter 
 notebook documents. The "notebook" term can colloquially make
