@@ -69,13 +69,13 @@ def get_path(path):
         return False
 
 
-def check_path(exe):
+def check_path(exe, raise_error=False):
     """ Checks path exists, if yes, returns path, else raises FileNotFoundError """
     path = get_path(exe)
     if path:
         return path
     else:
-        if exe=='pip3':
+        if not raise_error:
             msg = '{e} is not a valid executable. Please check if {e} is installed and is on PATH'.format(e=exe)
             logging.error(msg)
             return False
@@ -126,7 +126,8 @@ class Jupyter:
         Start jupyter-lab, if it exists, else raise FileNotFoundError.
         :return: None
         """
-        self.path = check_path('jupyter-lab')
+        self.path = check_path('jupyter-lab') or check_path('jupyter-notebook')
+        # If jupyter-labs is not found, fallback to jupyter-notebook
         logging.warning(self.path)
         if self.serve():
             return True
@@ -218,7 +219,8 @@ class JupyterActivity(activity.Activity):
         self.build_toolbar()
         self.set_canvas(self._scrolled_window)
         self.web_view.show()
-        jupyter_path = get_path('jupyter-lab')   # returns path if exists, else false
+        jupyter_path = get_path('jupyter-lab') or get_path('jupyter-notebook')  
+        # returns path if exists, else false
         if jupyter_path:
             loader = 'init'  # need to call init on OLPCs with slow CPU cycle. Server might start slow
         else:
@@ -295,7 +297,7 @@ class JupyterActivity(activity.Activity):
         :return:True if installation was called, False if pip3 was not installs
         """
         logging.debug("Installing Jupyter")
-        pip3_path = check_path('pip3')
+        pip3_path = check_path('pip3', raise_error=True)
         if pip3_path:
             pass
         else:
