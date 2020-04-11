@@ -1,0 +1,38 @@
+# JupyterLabs Activity
+# Copyright (C) 2020 Srevin Saju
+# This file is distributed under the same license as the jupyter-activity package.
+# Srevin Saju  <srevin03@gmail.com>, 2020.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: v1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2020-04-11 21:03+0300\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: activity/activity.info:2
+msgid "JupyterLabs"
+msgstr ""
+
+#: activity.py:350
+msgid "Back"
+msgstr ""
+
+#: activity.py:357
+msgid "Forward"
+msgstr ""
+
+#: activity.py:364
+msgid "Home"
+msgstr ""
+
+#: viewtoolbar.py:41
+msgid "Fullscreen"
+msgstr ""
