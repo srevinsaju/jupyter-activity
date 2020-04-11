@@ -1,6 +1,6 @@
 <img src=https://upload.wikimedia.org/wikipedia/commons/thumb/3/38/Jupyter_logo.svg/883px-Jupyter_logo.svg.png width=25%>
 
-# Jupyter Activity (beta)
+# Jupyter Activity
 >**Jupyter Notebook** formerly IPython Notebooks) is a web-based 
 interactive computational environment for creating Jupyter 
 notebook documents. The "notebook" term can colloquially make
@@ -27,7 +27,7 @@ the three popular languages Python, Julia and Ruby.
 be automatically installed.
 
 ### Offline Download
-Jupyter needs `jupyter`, `jupyterlabs` and `notebooks` to work
+Jupyter needs `jupyter`, `jupyter-lab` and `notebooks` to work
 The jupyter activity on launch automatically downloads the 
 required dependencies online. 
 It is possible to install jupyter on a computer without
@@ -52,6 +52,16 @@ You can test it by
 ```
 jupyter-lab --version
 ```
+
+### Installing with debian packages only (no pip wheels)
+It is partially possible to make this activity work without pip / jupyterlab
+package from the PyPI. However this is not recommended, as the core software
+`jupyter-lab` is not packaged as a debian package.
+(see https://github.com/jupyterlab/jupyterlab/issues/4572 for more information)
+As an alternative, on computers without internet connection, `jupyter-activity`
+will not fail, and will fallback to `jupyter-notebook` if its installed. This, 
+is better, because Debian / Ubuntu provides prebuilt `jupyter [all]` packages for 
+jupyter-notebooks to work. 
 
 ## License
 ```buildoutcfg
