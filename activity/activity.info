@@ -5,4 +5,5 @@ bundle_id = io.srevinsaju.JupyterLabs
 exec = sugar-activity3 activity.JupyterActivity
 icon = activity-jupyter
 license = MIT
+summary = A Jupyter Python activity just for Sugar!
 repository = https://github.com/srevinsaju/jupyter-activity
